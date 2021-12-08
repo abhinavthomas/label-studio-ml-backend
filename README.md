@@ -23,7 +23,7 @@ Follow this example tutorial to run an ML backend with a simple text classifier:
 
 0. Clone the repo
    ```bash
-   git clone https://github.com/heartexlabs/label-studio-ml-backend  
+   git clone https://github.com/abhinavthomas/label-studio-ml-backend  
    ```
    
 1. Setup environment
@@ -41,7 +41,11 @@ Follow this example tutorial to run an ML backend with a simple text classifier:
    
 2. Initialize an ML backend based on an example script:
    ```bash
-   label-studio-ml init my_ml_backend --script label_studio_ml/examples/simple_text_classifier/simple_text_classifier.py
+   label-studio-ml init my_ml_backend --script model-backends/model_text_classification.py
+   ```
+   or
+   ```bash
+   label-studio-ml init my_ml_backend --script label_studio_ml/examples/simple_text_classifier.py
    ```
    This ML backend is an example provided by Label Studio. See [how to create your own ML backend](#Create_your_own_ML_backend).
 
