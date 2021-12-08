@@ -41,7 +41,7 @@ Follow this example tutorial to run an ML backend with a simple text classifier:
    
 2. Initialize an ML backend based on an example script:
    ```bash
-   label-studio-ml init my_ml_backend --script model-backends/model_text_classification.py
+   label-studio-ml init my_ml_backend --script label_studio_ml/examples/text_classification_backends/model_text_classification.py
    ```
    or
    ```bash
