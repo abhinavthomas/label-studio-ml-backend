@@ -1,13 +1,13 @@
-import pickle
 import os
+import pickle
+
 import numpy as np
-
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.multioutput import MultiOutputClassifier
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.pipeline import make_pipeline
-
 from label_studio_ml.model import LabelStudioMLBase
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.multioutput import MultiOutputClassifier
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import MultiLabelBinarizer
 
 
 class SimpleTextClassifier(LabelStudioMLBase):
@@ -20,7 +20,7 @@ class SimpleTextClassifier(LabelStudioMLBase):
         # Parsed label config contains only one output of <Choices> type
         assert len(self.parsed_label_config) == 1
         self.from_name, self.info = list(self.parsed_label_config.items())[0]
-        assert self.info['type'] == 'taxonomy'
+        assert self.info['type'] == 'Taxonomy'
 
         # the model has only one textual input
         assert len(self.info['to_name']) == 1
@@ -35,7 +35,8 @@ class SimpleTextClassifier(LabelStudioMLBase):
             # This is an array of <Choice> labels
             self.labels = self.info['labels']
             # make some dummy initialization
-            self.model.fit(X=self.labels, y=list(range(len(self.labels))))
+            self.model.fit(X=self.labels, y=[[i]
+                           for i in range(len(self.labels))])
             print('Initialized with from_name={from_name}, to_name={to_name}, labels={labels}'.format(
                 from_name=self.from_name, to_name=self.to_name, labels=str(
                     self.labels)
@@ -45,6 +46,10 @@ class SimpleTextClassifier(LabelStudioMLBase):
             self.model_file = self.train_output['model_file']
             with open(self.model_file, mode='rb') as f:
                 self.model = pickle.load(f)
+            # otherwise load the MLB from the latest training results
+            mlb_file = self.train_output['mlb_file']
+            with open(mlb_file, mode='rb') as f:
+                self.mlb = pickle.load(f)
             # and use the labels from training outputs
             self.labels = self.train_output['labels']
             print('Loaded from train output with from_name={from_name}, to_name={to_name}, labels={labels}'.format(
@@ -55,6 +60,7 @@ class SimpleTextClassifier(LabelStudioMLBase):
     def reset_model(self):
         self.model = make_pipeline(TfidfVectorizer(
             ngram_range=(1, 3)), MultiOutputClassifier(RandomForestClassifier(random_state=1), n_jobs=-1))
+        self.mlb = MultiLabelBinarizer()
 
     def predict(self, tasks, **kwargs):
         # collect input texts
@@ -63,23 +69,19 @@ class SimpleTextClassifier(LabelStudioMLBase):
             input_texts.append(task['data'][self.value])
 
         # get model predictions
-        probabilities = self.model.predict_proba(input_texts)
-        predicted_label_indices = np.argmax(probabilities, axis=1)
-        predicted_scores = probabilities[np.arange(
-            len(predicted_label_indices)), predicted_label_indices]
+        one_hot_encoded = self.model.predict(input_texts)
+        predicted_label_indices = self.mlb.inverse_transform(one_hot_encoded)
         predictions = []
-        for idx, score in zip(predicted_label_indices, predicted_scores):
-            predicted_label = self.labels[idx]
+        for idx in predicted_label_indices:
+            predicted_label = [[self.labels[i]] for i in idx]
             # prediction result for the single task
             result = [{
                 'from_name': self.from_name,
                 'to_name': self.to_name,
-                'type': 'choices',
-                'value': {'choices': [predicted_label]}
+                'type': 'taxonomy',
+                'value': {'taxonomy': predicted_label}
             }]
-
-            # expand predictions with their scores for all tasks
-            predictions.append({'result': result, 'score': score})
+            predictions.append({'result': result})
 
         return predictions
 
@@ -115,15 +117,21 @@ class SimpleTextClassifier(LabelStudioMLBase):
 
         # train the model
         self.reset_model()
-        self.model.fit(input_texts, output_labels_idx)
+        print("New label binarizer has been fitted")
+        mlb_outputs = self.mlb.fit_transform(output_labels_idx)
+        self.model.fit(input_texts, mlb_outputs)
 
         # save output resources
         model_file = os.path.join(workdir, 'model.pkl')
         with open(model_file, mode='wb') as fout:
             pickle.dump(self.model, fout)
+        mlb_file = os.path.join(workdir, 'mlb.pkl')
+        with open(mlb_file, mode='wb') as fout:
+            pickle.dump(self.mlb, fout)
 
         train_output = {
             'labels': self.labels,
-            'model_file': model_file
+            'model_file': model_file,
+            'mlb_file': mlb_file
         }
         return train_output
